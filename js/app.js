@@ -22,35 +22,34 @@ modelNameInput.value = state.model;
 const checkOllamaConnection = async () => {
   try {
     const response = await fetch(`${state.serverUrl}/v1/models`);
-    if (!response.ok) {
-      connectionStatus.classList.add("text-red-500");
-      connectionStatus.classList.remove("text-green-500");
-      connectionStatus.textContent = "NG";
-    } else {
-      connectionStatus.classList.add("text-green-500");
-      connectionStatus.classList.remove("text-red-500");
-      connectionStatus.textContent = "OK";
-    }
+
+    connectionStatus.classList.toggle("text-green-500", response.ok);
+    connectionStatus.classList.toggle("text-red-500", !response.ok);
+    connectionStatus.textContent = response.ok ? "OK" : "NG";
   } catch (error) {
     connectionStatus.classList.add("text-red-500");
     connectionStatus.classList.remove("text-green-500");
     connectionStatus.textContent = "NG";
     showNotice(`Error connecting to Ollama server: ${error.message}`);
   }
-}
+};
 
 settingsForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
   state.serverUrl = normalizeServerUrl(serverUrlDisplay.textContent);
-  state.model = MODELS.includes(modelNameInput.value) ? modelNameInput.value : DEFAULT_MODEL;
+  state.model = MODELS.includes(modelNameInput.value)
+    ? modelNameInput.value
+    : DEFAULT_MODEL;
 
   serverUrlDisplay.textContent = state.serverUrl;
   modelNameInput.value = state.model;
+
   localStorage.setItem("ollamaChat.serverUrl", state.serverUrl);
   localStorage.setItem("ollamaChat.model", state.model);
 
   showNotice("Settings saved.");
+  checkOllamaConnection();
 });
 
 chatForm.addEventListener("submit", async (event) => {
@@ -69,7 +68,8 @@ chatForm.addEventListener("submit", async (event) => {
     await streamChatResponse(assistantMessage);
   } catch (error) {
     assistantMessage.content = `Error: ${error.message}`;
-    assistantMessage.element.querySelector("[data-content]").textContent = assistantMessage.content;
+    assistantMessage.element.querySelector("[data-content]").textContent =
+      assistantMessage.content;
   } finally {
     setLoading(false);
     messageInput.focus();
@@ -87,7 +87,9 @@ async function streamChatResponse(assistantMessage) {
     .filter((message) => message !== assistantMessage)
     .map(({ role, content }) => ({ role, content }));
 
-  const response = await fetch(ollamaUrl, {
+  const url = `${state.serverUrl}/v1/chat/completions`;
+
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -101,7 +103,9 @@ async function streamChatResponse(assistantMessage) {
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`);
+    throw new Error(
+      `${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`
+    );
   }
 
   if (!response.body) {
@@ -117,16 +121,35 @@ async function streamChatResponse(assistantMessage) {
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
+
     const lines = buffer.split("\n");
     buffer = lines.pop() || "";
 
     for (const line of lines) {
-      if (!line.trim()) continue;
+      const trimmed = line.trim();
+      if (!trimmed) continue;
 
-      const chunk = JSON.parse(line);
-      const token = chunk.message?.content || "";
-      if (token) updateAssistantMessage(assistantMessage, token);
-      if (chunk.done) return;
+      if (!trimmed.startsWith("data:")) continue;
+
+      const jsonLine = trimmed.replace(/^data:\s*/, "");
+
+      if (jsonLine === "[DONE]") {
+        return;
+      }
+
+      let chunk;
+      try {
+        chunk = JSON.parse(jsonLine);
+      } catch (error) {
+        console.warn("JSON parse error:", jsonLine);
+        continue;
+      }
+
+      const token = chunk.choices?.[0]?.delta?.content || "";
+
+      if (token) {
+        updateAssistantMessage(assistantMessage, token);
+      }
     }
   }
 }
@@ -135,6 +158,7 @@ function appendMessage(role, content, options = {}) {
   clearEmptyState();
 
   const message = { role, content };
+
   if (options.persist !== false) {
     state.messages.push(message);
   }
@@ -153,6 +177,7 @@ function appendMessage(role, content, options = {}) {
     role === "user"
       ? "mb-1 text-xs font-semibold text-emerald-100"
       : "mb-1 text-xs font-semibold text-zinc-500";
+
   label.textContent = role === "user" ? "You" : "Ollama";
 
   const body = document.createElement("div");
@@ -165,6 +190,7 @@ function appendMessage(role, content, options = {}) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 
   message.element = wrapper;
+
   return message;
 }
 
@@ -195,7 +221,9 @@ function renderEmptyState() {
 
 function clearEmptyState() {
   const emptyState = messagesEl.querySelector("[data-empty-state]");
-  if (emptyState) emptyState.remove();
+  if (emptyState) {
+    emptyState.remove();
+  }
 }
 
 function normalizeServerUrl(value) {
