@@ -1,9 +1,8 @@
-const DEFAULT_SERVER_URL = "http://172.16.3.6:11434";
-const MODELS = ["qwen3:8b", "qwen2.5-coder:7b", "gemma3:4b", "qwen3:4b"];
 const DEFAULT_MODEL = MODELS[0];
 
 const settingsForm = document.querySelector("#settingsForm");
-const serverUrlInput = document.querySelector("#serverUrl");
+const serverUrlDisplay = document.querySelector("#server-url");
+const connectionStatus = document.querySelector("#connection-status");
 const modelNameInput = document.querySelector("#modelName");
 const chatForm = document.querySelector("#chatForm");
 const messageInput = document.querySelector("#messageInput");
@@ -11,24 +10,42 @@ const sendButton = document.querySelector("#sendButton");
 const messagesEl = document.querySelector("#messages");
 
 const state = {
-  serverUrl: localStorage.getItem("ollamaChat.serverUrl") || DEFAULT_SERVER_URL,
+  serverUrl: DEFAULT_SERVER_URL,
   model: getSavedModel(),
   messages: [],
   loading: false,
 };
 
-serverUrlInput.value = state.serverUrl;
+serverUrlDisplay.textContent = state.serverUrl;
 modelNameInput.value = state.model;
 
-renderEmptyState();
+const checkOllamaConnection = async () => {
+  try {
+    const response = await fetch(`${state.serverUrl}/v1/models`);
+    if (!response.ok) {
+      connectionStatus.classList.add("text-red-500");
+      connectionStatus.classList.remove("text-green-500");
+      connectionStatus.textContent = "NG";
+    } else {
+      connectionStatus.classList.add("text-green-500");
+      connectionStatus.classList.remove("text-red-500");
+      connectionStatus.textContent = "OK";
+    }
+  } catch (error) {
+    connectionStatus.classList.add("text-red-500");
+    connectionStatus.classList.remove("text-green-500");
+    connectionStatus.textContent = "NG";
+    showNotice(`Error connecting to Ollama server: ${error.message}`);
+  }
+}
 
 settingsForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
-  state.serverUrl = normalizeServerUrl(serverUrlInput.value);
+  state.serverUrl = normalizeServerUrl(serverUrlDisplay.textContent);
   state.model = MODELS.includes(modelNameInput.value) ? modelNameInput.value : DEFAULT_MODEL;
 
-  serverUrlInput.value = state.serverUrl;
+  serverUrlDisplay.textContent = state.serverUrl;
   modelNameInput.value = state.model;
   localStorage.setItem("ollamaChat.serverUrl", state.serverUrl);
   localStorage.setItem("ollamaChat.model", state.model);
@@ -70,7 +87,7 @@ async function streamChatResponse(assistantMessage) {
     .filter((message) => message !== assistantMessage)
     .map(({ role, content }) => ({ role, content }));
 
-  const response = await fetch(`${state.serverUrl}/api/chat`, {
+  const response = await fetch(ollamaUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -189,3 +206,6 @@ function getSavedModel() {
   const savedModel = localStorage.getItem("ollamaChat.model");
   return MODELS.includes(savedModel) ? savedModel : DEFAULT_MODEL;
 }
+
+renderEmptyState();
+checkOllamaConnection();

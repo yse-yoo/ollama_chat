@@ -13,14 +13,12 @@
     <header class="mb-4 flex flex-col gap-3 border-b border-zinc-300 pb-4 md:flex-row md:items-end md:justify-between">
       <div>
         <h1 class="text-2xl font-semibold tracking-tight">Ollama Chat</h1>
-        <p class="mt-1 text-sm text-zinc-600">Connects to http://172.16.3.6:11434/</p>
       </div>
       <form id="settingsForm" class="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_minmax(160px,220px)_auto] md:w-[680px]">
         <label class="block text-sm">
           <span class="mb-1 block font-medium text-zinc-700">Server</span>
-          <input id="serverUrl"
-            class="h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm outline-none focus:border-zinc-700"
-            type="url" value="http://172.16.3.6:11434" />
+          <span id="server-url" class="inline-block text-xs text-zinc-500"></span>
+          <span id="connection-status" class="inline-block text-xs text-red-500">NG</span>
         </label>
         <label class="block text-sm">
           <span class="mb-1 block font-medium text-zinc-700">Model</span>
@@ -56,7 +54,8 @@
     </form>
   </main>
 
-  <script src="js/app.js"></script>
+  <script src="js/env.js?<?= time() ?>"></script>
+  <script src="js/app.js?<?= time() ?>"></script>
 </body>
 
 </html>
