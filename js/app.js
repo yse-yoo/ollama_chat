@@ -6,17 +6,21 @@ const connectionStatus = document.querySelector("#connection-status");
 const modelNameInput = document.querySelector("#modelName");
 const chatForm = document.querySelector("#chatForm");
 const messageInput = document.querySelector("#messageInput");
+const saveChatButton = document.querySelector("#saveChatButton");
 const sendButton = document.querySelector("#sendButton");
 const messagesEl = document.querySelector("#messages");
 
 const state = {
   serverUrl: DEFAULT_SERVER_URL,
   model: getSavedModel(),
+  conversationId: null,
   messages: [],
   loading: false,
+  saving: false,
 };
 
 serverUrlDisplay.textContent = state.serverUrl;
+renderModelOptions();
 modelNameInput.value = state.model;
 
 const checkOllamaConnection = async () => {
@@ -82,13 +86,50 @@ messageInput.addEventListener("keydown", (event) => {
   }
 });
 
+saveChatButton.addEventListener("click", async () => {
+  if (state.loading || state.saving || state.messages.length === 0) return;
+
+  setSaving(true);
+
+  try {
+    const url = "api/message/save.php";
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        conversation_id: state.conversationId,
+        title: createConversationTitle(),
+        messages: state.messages.map(({ uuid, role, content }) => ({
+          uuid,
+          role,
+          content,
+        })),
+      }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(result.error || `${response.status} ${response.statusText}`);
+    }
+
+    state.conversationId = result.conversation_id;
+    showNotice("Chat saved.");
+  } catch (error) {
+    showNotice(`Error saving chat: ${error.message}`);
+  } finally {
+    setSaving(false);
+  }
+});
+
 async function streamChatResponse(assistantMessage) {
   const chatHistory = state.messages
     .filter((message) => message !== assistantMessage)
     .map(({ role, content }) => ({ role, content }));
 
   const url = `${state.serverUrl}/v1/chat/completions`;
-
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -157,7 +198,11 @@ async function streamChatResponse(assistantMessage) {
 function appendMessage(role, content, options = {}) {
   clearEmptyState();
 
-  const message = { role, content };
+  const message = {
+    role,
+    content,
+    uuid: options.persist === false ? null : createMessageUuid(),
+  };
 
   if (options.persist !== false) {
     state.messages.push(message);
@@ -203,7 +248,14 @@ function updateAssistantMessage(message, token) {
 function setLoading(isLoading) {
   state.loading = isLoading;
   sendButton.disabled = isLoading;
+  saveChatButton.disabled = isLoading || state.saving || state.messages.length === 0;
   sendButton.textContent = isLoading ? "Sending" : "Send";
+}
+
+function setSaving(isSaving) {
+  state.saving = isSaving;
+  saveChatButton.disabled = isSaving || state.loading || state.messages.length === 0;
+  saveChatButton.textContent = isSaving ? "Saving" : "Save Chat";
 }
 
 function showNotice(text) {
@@ -228,6 +280,31 @@ function clearEmptyState() {
 
 function normalizeServerUrl(value) {
   return (value.trim() || DEFAULT_SERVER_URL).replace(/\/+$/, "");
+}
+
+function createConversationTitle() {
+  const firstUserMessage = state.messages.find((message) => message.role === "user");
+  const title = firstUserMessage?.content.trim() || "New Chat";
+  return title.length > 80 ? `${title.slice(0, 80)}...` : title;
+}
+
+function createMessageUuid() {
+  if (!crypto.randomUUID) {
+    throw new Error("crypto.randomUUID is not available.");
+  }
+
+  return crypto.randomUUID();
+}
+
+function renderModelOptions() {
+  modelNameInput.innerHTML = "";
+
+  for (const model of MODELS) {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    modelNameInput.appendChild(option);
+  }
 }
 
 function getSavedModel() {
